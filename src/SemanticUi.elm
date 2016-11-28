@@ -1,36 +1,41 @@
-module SemanticUi
-    ( Element
-    , render
-
+module SemanticUi exposing
+    ( render
+    , container, row, col
+    , button, input
+    , size, fluid, placeholder, events
     , Size(..)
-    , size
-
-    , Button
-    , button
-    , button'
-    ) where
+    )
 
 {-| Elm bindings for Semantic UI using a declarative API and useful
 abstractions.
 
 # Rendering
 
-@docs Element, render
+@docs render
 
 # Styling
 
-@docs Size, size
+@docs Size, size, fluid, placeholder
+
+# Events
+
+@docs events
 
 # Elements
 
+## Grid
+
+@docs container, row, col
+
 ## Button
 
-@docs Button, button, button'
+@docs button
+
+## Input
+
+@docs input
 
 -}
-
-import List exposing (append)
-import String exposing (join)
 
 import Html exposing (Html, Attribute)
 import Html as H
@@ -38,31 +43,44 @@ import Html.Attributes as A
 
 
 {-| An element defines a control. A control has a `state` and a function to
-turn this state into an `Html` object. -}
-type alias Element a =
+turn this state into an `Html Msg` object. -}
+type alias Element a msg =
     { state : a
-    , render : a -> Html
+    , render : a -> Html msg
     }
 
-{-| Create the `Html` for a Semantic UI `Element`.
+{-| Create the `Html msg` for a Semantic UI `Element`.
 
     button "click" |> render
 -}
-render : Element a -> Html
+render : Element a msg -> Html msg
 render element =
     element.render element.state
 
 
-element : a -> (a -> Html) -> Element a
-element state render =
-    { state = state, render = render }
+update : (a -> a) -> Element a msg -> Element a msg
+update f element = { element | state = f element.state }
 
-style : (a -> a) -> Element a -> Element a
-style f element =
-    let oldStyle = element.state
-        newStyle = f oldStyle
-    in { element | state <- newStyle }
+{-| Create the `Html msg` for a grid container.
 
+    container [html content]
+-}
+container : List (Html msg) -> Html msg
+container = H.div [ A.class "ui grid container" ]
+
+{-| Create the `Html msg` for a grid row.
+
+    row [] [ div [] [] ]
+-}
+row : List (H.Attribute msg) -> List (Html msg) -> Html msg
+row attrs = H.div ([ A.class "row" ] ++ attrs)
+
+{-| Create the `Html msg` for a grid col.
+
+    col "two" [ div [] [] ]
+-}
+col : String -> List (Html msg) -> Html msg
+col n = H.div [ A.class (n ++ " wide column") ]
 
 {-| Some elements might have different sizes. -}
 type Size
@@ -82,43 +100,108 @@ type alias Sized a =
 
     button "click" |> size Huge
  -}
-size : Size -> Element (Sized a) -> Element (Sized a)
-size size = style <| \state -> { state | size <- size }
+size : Size -> Element (Sized a) msg -> Element (Sized a) msg
+size size = update <| \state -> { state | size = size }
 
 
 type alias Readable a =
     { a | text : String }
 
+type alias Writable a =
+    { a | placeholder : String }
+
+type alias WithAttributes a msg =
+  { a | attrs: List (Attribute msg)}
+
+type alias EventEmitter a msg =
+  { a | events: List (Attribute msg)}
+
 {-| Adjust the text of an element.
 
     button "click" |> text "DON'T click"
 -}
-text : String -> Element (Readable a) -> Element (Readable a)
-text text = style <| \state -> { state | text <- text }
+text : String -> Element (Readable a) msg -> Element (Readable a) msg
+text text = update <| \state -> { state | text = text }
 
+{-| Set placeholder for input element
 
-{-| The button state driving the visual appearance. -}
-type alias Button =
+    input [] |> placeholder "write here..."
+-}
+placeholder : String -> Element (Writable a) msg -> Element (Writable a) msg
+placeholder text = update <| \state -> { state | placeholder = text }
+
+{-| Set placeholder for input element
+
+    input [] |> events [ onInput InputTextMsg ]
+-}
+events : List (Attribute msg) -> Element (EventEmitter a msg) msg -> Element (EventEmitter a msg) msg
+events events = update <| \state -> { state | events = events }
+
+{-| Add fluid class to input element
+
+    input [] |> fluid
+-}
+fluid : Element (WithAttributes a msg) msg -> Element (WithAttributes a msg) msg
+fluid = update <| \state -> { state | attrs = (state.attrs ++ [ A.class "fluid" ]) }
+
+sizeToString : Size -> String
+sizeToString size =
+    case size of
+      Mini -> "mini"
+      Tiny -> "tiny"
+      Small -> "small"
+      Medium -> "medium"
+      Large -> "large"
+      Big -> "big"
+      Huge -> "huge"
+      Massive -> "massive"
+
+type Event msg = Attribute msg
+
+type alias Button msg =
     { text : String
     , size : Size
+    , events: List (Attribute msg)
     }
 
 {-| A button with a text. -}
-button : String -> Element Button
+button : String -> Element (Button msg) msg
 button text =
     let
         state =
             { text = text
             , size = Medium
+            , events = []
             }
 
         render state =
-            H.div
-                [ A.class "ui button" ]
+            H.button
+                ([ A.class "ui button", A.class (sizeToString state.size) ] ++ state.events)
                 [ H.text state.text ]
 
-    in element state render
+    in Element state render
 
-{-| A button with an empty text. -}
-button' : Element Button
-button' = button ""
+
+type alias Input msg =
+  {
+    placeholder: String
+  , attrs: List (Attribute msg)
+  , events: List (Attribute msg)
+  }
+
+{-| A inout with a html attributes -}
+input : List (H.Attribute msg) -> Element (Input msg) msg
+input attrs =
+    let
+      state =
+        {
+          placeholder = ""
+        , attrs = attrs
+        , events = []
+        }
+
+      render state =
+        H.div ([ A.class "ui icon input" ] ++ state.attrs)
+          [ H.input ([ A.placeholder state.placeholder ] ++ state.events) [] ]
+
+    in Element state render
